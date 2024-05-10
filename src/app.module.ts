@@ -1,48 +1,63 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { createClient } from 'redis';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserModule } from './user/user.module';
+import { RoleModule } from './role/role.module';
+import { MenuModule } from './menu/menu.module';
+import { User } from './user/entities/user.entity';
+import { Role } from './role/entities/role.entity';
+import { Menu } from './menu/entities/menu.entity';
+import { RedisModule } from './redis/redis.module';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      type: 'mysql',
-      host: 'localhost',
-      port: 3306,
-      username: 'root',
-      password: '123456',
-      database: 'task_admin',
-      synchronize: true,
-      logging: true, // 是否打印 sql 语句
-      entities: [], // 表
-      poolSize: 10, // 连接数量
-      connectorPackage: 'mysql2', // 连接池
-      extra: {
-        authPlugin: 'sha256_password',
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env',
+    }),
+    JwtModule.registerAsync({
+      global: true,
+      useFactory(configService: ConfigService) {
+        return {
+          secret: configService.get('jwt_secret'),
+          signOptions: {
+            expiresIn: configService.get('jwt_access_token_expires_time'), // 默认30分钟
+          },
+        };
       },
+      inject: [ConfigService],
+    }),
+    TypeOrmModule.forRootAsync({
+      useFactory(configService: ConfigService) {
+        console.log(configService.get('mysql_server_host'));
+        return {
+          type: 'mysql',
+          host: configService.get('mysql_server_host'),
+          port: configService.get('mysql_server_port'),
+          username: configService.get('mysql_server_username'),
+          password: configService.get('mysql_server_password'),
+          database: configService.get('mysql_server_database'),
+          synchronize: true,
+          logging: true, // 是否打印 sql 语句
+          entities: [User, Role, Menu], // 表
+          poolSize: 10, // 连接数量
+          connectorPackage: 'mysql2', // 连接池
+          extra: {
+            authPlugin: 'sha256_password',
+          },
+        };
+      },
+      inject: [ConfigService],
     }),
     UserModule,
+    RoleModule,
+    MenuModule,
+    RedisModule,
   ],
   controllers: [AppController],
-  providers: [
-    AppService,
-    // 注册 Redis 模块
-    {
-      provide: 'REDIS_CLIENT',
-      async useFactory() {
-        const client = createClient({
-          socket: {
-            host: 'localhost',
-            port: 6379,
-          },
-        });
-
-        await client.connect();
-        return client;
-      },
-    },
-  ],
+  providers: [AppService],
 })
 export class AppModule {}
